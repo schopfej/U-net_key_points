@@ -24,5 +24,16 @@ def get_params():
     p.add('--in-shape', type=int)
     p.add('--sig-x', type=float)
     p.add('--sig-y', type=float)
+    p.add('--train-split', type=float)
+    p.add('--val-split', type=float)
+    p.add('--in-channels', type=int)
+    p.add('--out-channels', type=int)
+    p.add('--depth', type=int)
+    p.add('--merge-mode', type=str)
+
+    p.add('--aug-rotate', type=float)
+    p.add('--aug-shear', type=float)
+    p.add('--aug-gaussblur', type=float)
+    p.add('--aug-scale', type=float)
 
     return p

@@ -1,6 +1,20 @@
 n-epochs: 100
 batch-size: 4
+# train-to-others ratio
+train-split: 0.8
+# val-to-test ratio
+val-split: 0.5
 n-workers: 2
 in-shape: 224
 sig-x: 1.5
 sig-y: 1.5
+in-channels: 3
+out-channels: 1
+depth: 3
+merge-mode: 'concat'
+
+# augmentation
+aug-rotate: 15
+aug-shear: 15
+aug-gaussblur: 0.05
+aug-scale: 10

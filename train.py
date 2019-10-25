@@ -1,3 +1,5 @@
+import yaml
+from os.path import join as pjoin
 import configargparse
 import scipy.ndimage.filters as fi
 import numpy as np
@@ -17,49 +19,26 @@ from torch.utils.data import Dataset, DataLoader
 from scratch import UNet
 from torchvision import transforms, utils
 from data_load import Rescale, RandomCrop, Normalize, ToTensor, FacialKeypointsDataset
+from imgaug import augmenters as iaa
+from imgaug import parameters as iap
+
+def rescale_images(images, random_state, parents, hooks):
+
+    result = []
+    for image in images:
+        image_aug = np.copy(image)
+        if (image.dtype == np.uint8):
+            image_aug = image_aug / 255
+        result.append(image_aug)
+    return result
 
 
-def gkern2(tensor_coord, size_x=848, size_y=464, sig_x=3,
-           sig_y=3):  # by default like size of a iPhone video
-    """Returns a 2D Gaussian kernel array."""
-    # tensor_coord = tensor_coord[0]
-    # create nxn zeros
-    inp = np.zeros((size_y, size_x))
-    # tensor_coord = tensor_coord[~np.isnan(tensor_coord).any(axis=1)]
+void_fun = lambda x, random_state, parents, hooks: x
 
-    tensor_coord = tensor_coord[(tensor_coord < size_x).any(1)]
-    tensor_coord = tensor_coord[(0 < tensor_coord).any(1)]
-    # size x and y are equal..... when there is a Nan value, it is arbitrarily high value
-    # set element at the middle to one, a dirac delta
-
-    inp[tensor_coord[2, 1], tensor_coord[2, 0]] = 1
-    sigma = [sig_y, sig_x]
-    # gaussian-smooth the dirac, resulting in a gaussian filter mask
-    gaussian = fi.gaussian_filter(inp, sigma)
-    #gaussian[gaussian > 0] = 1
-    plt.imshow(gaussian)
-    plt.show()
-    return gaussian
-
-
-net = UNet(3, in_channels=1, depth=3, merge_mode='concat')
-print(net)
-
-
-my_transform = transforms.Compose([
-    Rescale(cfg.in_shape),
-    Normalize(),
-    ToTensor()
-])
-my_loader = FacialKeypointsDataset(csv_file=cfg.csv_file,
-                                   root_dir=cfg.root_dir,
-                                   transform=my_transforms)
-
-
-def show_keypoints(image, key_pts):
-    """Show image with keypoints"""
-    plt.imshow(image)
-    plt.scatter(key_pts[:, 0], key_pts[:, 1], s=20, marker='x', c='red')
+rescale_augmenter = iaa.Lambda(
+    func_images=rescale_images,
+    func_heatmaps=void_fun,
+    func_keypoints=void_fun)
 
 
 def show_all_keypoints(image, predicted_key_pts, gt_pts=None):
@@ -74,6 +53,7 @@ def show_all_keypoints(image, predicted_key_pts, gt_pts=None):
     # plot ground truth points as green pts
     if gt_pts is not None:
         plt.scatter(gt_pts[:, 0], gt_pts[:, 1], s=20, marker='.', c='g')
+
 
 # visualize the output
 # by default this shows a batch of 10 images
@@ -159,38 +139,82 @@ net = UNet(2, in_channels=3, depth=5, merge_mode='concat')
 
 
 def train(cfg):
+
+    if(not os.path.exists(cfg.out_dir)):
+        os.makedirs(cfg.out_dir)
+
+    with open(pjoin(cfg.out_dir, 'cfg.yml'), 'w') as outfile:
+        yaml.dump(cfg.__dict__, stream=outfile, default_flow_style=False)
+
+
+    net = UNet(cfg.out_channels,
+               in_channels=cfg.in_channels,
+               depth=cfg.depth,
+               merge_mode=cfg.merge_mode)
+
+    # make augmenter
+    transf = iaa.Sequential([
+        iaa.SomeOf(3, [
+            iaa.Affine(scale={
+                "x": (1 - cfg.aug_scale,
+                      1 + cfg.aug_scale),
+                "y": (1 - cfg.aug_scale,
+                      1 + cfg.aug_scale)},
+            iaa.Affine(rotate=iap.Uniform(-cfg.aug_rotate, cfg.aug_rotate)),
+            iaa.Affine(shear=iap.Uniform(-cfg.aug_shear, cfg.aug_shear)),
+            iaa.Fliplr(1.),
+            iaa.Flipud(1.),
+            iaa.GaussianBlur(sigma=iap.Uniform(0.0, cfg.aug_gaussblur))
+        ]),
+        iaa.Resize(cfg.in_shape), rescale_augmenter
+    ])
+
+    my_transforms = transforms.Compose(
+        [Rescale(cfg.in_shape), Normalize(),
+         ToTensor()])
+    base_loader = FacialKeypointsDataset(csv_file=cfg.csv_file,
+                                       root_dir=cfg.root_dir,
+                                       transform=my_transforms)
+
+    # build train, val and test sets randomly with given split ratios
+    idxs = np.random.shuffle(np.arange(len(base_loader)))
+    train_idxs = idxs[:int(len(base_loader) * cfg.train_split)]
+    others_idxs = idxs[int(len(base_loader) * cfg.train_split):]
+    val_idxs = others_idxs[:int(len(base_loader) * cfg.val_split)]
+    test_idxs = others_idxs[int(len(base_loader) * cfg.val_split):]
+
+    train_loader = torch.utils.data.Subset(base_loader, train_idxs)
+    val_loader = torch.utils.data.Subset(base_loader, val_idxs)
+    test_loader = torch.utils.data.Subset(base_loader, test_idxs)
+
+    loaders = {'train': DataLoader(train_loader,
+                                   batch_size=cfg.batch_size,
+                                   num_workers=cfg.n_workers)
+               'val': DataLoader(train_loader,
+                                   batch_size=cfg.batch_size,
+                                   num_workers=cfg.n_workers),
+               'test': DataLoader(train_loader,
+                                  num_workers=cfg.n_workers)}
+    train_loader = torch
     # prepare the net for training
-    net.train()
     for epoch in range(cfg.n_epochs):  # loop over the dataset multiple times
-        running_loss = 0.0
-        # train on batches of data, assumes you already have train_loader
-        for batch_i, data in enumerate(transformed_dataset):
-            # get the input images and their corresponding labels
-            images = data['image']
-            images = images.reshape(1, 3, size_y, size_y)
-            # images = Variable(torch.FloatTensor(images.reshape(1,1,size_x,size_y)))
-            key_pts = data['keypoints']
-            if np.isnan(key_pts).any():
-                break
-            print("the images for prediction:", images.shape)
-            print("the images type:", type(images))
-            keypoints_3 = np.array(data['keypoints'])
-            prob = gkern2(tensor_coord=keypoints_3.astype("int"),
-                          size_x=size_y,
-                          size_y=size_y,
-                          sig_x=10,
-                          sig_y=10)
-            prob = preprocessing.minmax_scale(prob, feature_range=(0, 1))
+        for phase in ['train', 'val', 'test']:
+            running_loss = 0.0
+            # train on batches of data, assumes you already have train_loader
+            for batch_i, data in enumerate(loaders[phase]):
+                # get the input images and their corresponding labels
+                images = data['image']
+                prob = preprocessing.minmax_scale(prob, feature_range=(0, 1))
 
-            prob = torch.from_numpy(prob.reshape(-1))
-            #prob = prob.long()
+                prob = torch.from_numpy(prob.reshape(-1))
+                #prob = prob.long()
 
-            # x = Variable(torch.FloatTensor(1, 1, images))
-            images = images.type(torch.FloatTensor)
-            # print("images after torch",images)
-            # forward pass to get outputs)
-            optimizer.zero_grad()
-            out = net(images)
+                # x = Variable(torch.FloatTensor(1, 1, images))
+                images = images.type(torch.FloatTensor)
+                # print("images after torch",images)
+                # forward pass to get outputs)
+                optimizer.zero_grad()
+                out = net(images)
 
             ################## Shape of output #########################################################
             ############################################################################################
@@ -248,6 +272,7 @@ if __name__ == "__main__":
     #Paths, dirs, names ...
     p.add('--csv-file', type=str, required=True)
     p.add('--root-dir', type=str, required=True)
+    p.add('--out-dir', type=str, required=True)
     p.add('--checkpoint-file', type=str)
 
     cfg = p.parse_args()
