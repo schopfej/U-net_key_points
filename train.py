@@ -83,13 +83,14 @@ rescale_augmenter = iaa.Lambda(
 def train(cfg):
 
     # make run_dir with date
+    import pdb; pdb.set_trace() ## DEBUG ##
     d = datetime.datetime.now()
     run_dir = pjoin(cfg.out_dir, 'exp_{:%Y-%m-%d_%H-%M}'.format(d))
 
     if(not os.path.exists(run_dir)):
         os.makedirs(run_dir)
 
-    with open(pjoin(cfg.out_dir, 'cfg.yml'), 'w') as outfile:
+    with open(pjoin(run_dir, 'cfg.yml'), 'w') as outfile:
         yaml.dump(cfg.__dict__, stream=outfile, default_flow_style=False)
 
     # generate tensorboard object
@@ -234,6 +235,7 @@ def train(cfg):
 
 if __name__ == "__main__":
 
+    import pdb; pdb.set_trace() ## DEBUG ##
     p = params.get_params()
 
     #Paths, dirs, names ...
