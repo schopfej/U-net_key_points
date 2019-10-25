@@ -6,8 +6,7 @@ train-split: 0.8
 val-split: 0.5
 n-workers: 2
 in-shape: 224
-sig-x: 1.5
-sig-y: 1.5
+sig-kp: 0.05
 in-channels: 1
 out-channels: 1
 depth: 3

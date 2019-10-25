@@ -33,12 +33,13 @@ def make_2d_gauss(shape, std, center):
 
     g = g_x * g_y
 
-    return g / np.sum(g)
+    # normalize to [0, 1]
+    return g / np.max(g)
 
 
 class FacialKeypointsDataset(Dataset):
     """Face Landmarks dataset."""
-    def __init__(self, csv_file, root_dir, sig_map=15, transform=None):
+    def __init__(self, csv_file, root_dir, sig_kp=0.05, transform=None):
         """
         Args:
             csv_file (string): Path to the csv file with annotations.
@@ -49,46 +50,43 @@ class FacialKeypointsDataset(Dataset):
         self.key_pts_frame = pd.read_csv(csv_file)
         self.root_dir = root_dir
         self.transform = transform
-        self.sig_map = sig_map
+        self.sig_kp = sig_kp
 
     def __len__(self):
         return len(self.key_pts_frame)
 
     def __getitem__(self, idx):
-        import pdb; pdb.set_trace() ## DEBUG ##
         image_name = os.path.join(self.root_dir,
                                   self.key_pts_frame.iloc[idx, 0])
 
         image = mpimg.imread(image_name)[..., None]
 
-        # if image has an alpha color channel, get rid of it
-        #if (image.shape[2] == 4):
-        #    image = image[:, :, 0:3]
-
         shape = image.shape
 
-        key_pts = self.key_pts_frame.iloc[idx, 1:].as_matrix()
-        key_pts = key_pts.astype('float').reshape(-1, 2)
+        # we take only pupil for now
+        kx = self.key_pts_frame['xp'].loc[idx]
+        ky = self.key_pts_frame['yp'].loc[idx]
 
         # apply augmentations
-        if (self.augmentations is not None):
+        if (self.transform is not None):
             # make deterministic so that all data have same transformatoin
-            aug_det = self.augmentations.to_deterministic()
+            aug_det = self.transform.to_deterministic()
 
             key_pts = ia.KeypointsOnImage(
-                [ia.Keypoint(x=p[1], y=p[0]) for p in key_pts],
-                shape=(shape[0], shape[1]))
-            keypoints = aug_det.augment_keypoints([keypoints])[0]
+                [ia.Keypoint(x=kx, y=ky)], shape=(shape[0], shape[1]))
+            image, key_pts = aug_det(image=image, keypoints=key_pts)
 
-            # generate univariate gaussian
-            kp_maps = np.array([
-                make_2d_gauss((shape[0], shape[1]),
-                              self.sig_map * np.max(shape), (kp.y, kp.x))
-                for kp in keypoints.keypoints
-            ])
+        # generate univariate gaussian
+        kp_map = np.array([
+            make_2d_gauss((image.shape[0], image.shape[1]),
+                            self.sig_kp * np.max(shape), (kp.y, kp.x))
+            for kp in key_pts.keypoints
+        ])
 
-            image = aug_det.augment_images([image])[0]
+        # put channel first
+        image = np.rollaxis(image, -1, 0)
+        
 
-        sample = {'image': image, 'truth': kp_maps}
+        sample = {'image': image, 'truth': kp_map}
 
         return sample

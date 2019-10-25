@@ -118,6 +118,7 @@ def train(cfg):
 
     base_loader = FacialKeypointsDataset(csv_file=cfg.csv_file,
                                          root_dir=cfg.root_dir,
+                                         sig_kp=cfg.sig_kp,
                                          transform=transf)
 
     # build train, val and test sets randomly with given split ratios
@@ -160,7 +161,7 @@ def train(cfg):
             running_loss = 0.0
             # train on batches of data, assumes you already have train_loader
             pbar = tqdm.tqdm(total=len(loaders[phase]))
-            for batch_i, data in enumerate(loaders[phase]):
+            for i, data in enumerate(loaders[phase]):
                 data = batch_to_device(data)
 
                 # zero the parameter gradients
@@ -178,7 +179,7 @@ def train(cfg):
                         loss.backward()
                         optimizer.step()
                 running_loss += loss.cpu().detach().numpy()
-                loss_ = running_loss / ((data_i + 1) * cfg.batch_size)
+                loss_ = running_loss / ((i + 1) * cfg.batch_size)
                 pbar.set_description('[{}] loss: {:.4f}'.format(phase, loss_))
                 pbar.update(1)
 
