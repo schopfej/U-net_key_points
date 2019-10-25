@@ -9,6 +9,7 @@ import cv2
 import imgaug as ia
 from imgaug import augmenters as iaa
 from imgaug import parameters as iap
+import matplotlib.pyplot as plt
 
 
 def make_1d_gauss(length, std, x0):
@@ -54,10 +55,11 @@ class FacialKeypointsDataset(Dataset):
         return len(self.key_pts_frame)
 
     def __getitem__(self, idx):
+        import pdb; pdb.set_trace() ## DEBUG ##
         image_name = os.path.join(self.root_dir,
                                   self.key_pts_frame.iloc[idx, 0])
 
-        image = mpimg.imread(image_name)
+        image = mpimg.imread(image_name)[..., None]
 
         # if image has an alpha color channel, get rid of it
         #if (image.shape[2] == 4):

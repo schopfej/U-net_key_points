@@ -36,4 +36,10 @@ def get_params():
     p.add('--aug-gaussblur', type=float)
     p.add('--aug-scale', type=float)
 
+    p.add('--cuda', default=False, action='store_true')
+
+    p.add('--lr', type=float)
+    p.add('--momentum', type=float)
+
+
     return p
