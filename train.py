@@ -171,7 +171,7 @@ def train(cfg):
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
-                    import pdb; pdb.set_trace()
+                    #import pdb; pdb.set_trace()
 
                     out = net(data['image'].float())
                     out = out.permute(2, 3, 0, 1).contiguous().view(-1, 1)
