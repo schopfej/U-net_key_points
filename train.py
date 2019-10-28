@@ -171,17 +171,18 @@ def train(cfg):
                 # forward
                 # track history if only in train
                 with torch.set_grad_enabled(phase == 'train'):
+                    import pdb; pdb.set_trace()
 
-                    out = net(data['image'])
+                    out = net(data['image'].float())
                     out = out.permute(2, 3, 0, 1).contiguous().view(-1, 1)
                     data_truth = softm(torch.squeeze(data['truth'])) ## here I am not sure, bc the entropy fct already has softmax
+
                     data_truth = data_truth.long()
                     out = out.reshape(4, 1, 224, 224)
                     # data_truth should have shape 4, 244,244
                     # input matrix is in the shape: (Minibatch, Classes, H, W)
                     # the target is in size (Minibatch, H, W)
-                    loss = criterion(out,
-                                     data_truth)
+                    loss = criterion(out, data_truth)
 
                     # backward + optimize only if in training phase
                     if phase == 'train':
