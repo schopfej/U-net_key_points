@@ -20,5 +20,5 @@ aug-scale: 2.
 
 cuda: False
 
-lr: 0.0001
+lr: 0.00001
 momentum: 0.9

@@ -47,46 +47,54 @@ class FacialKeypointsDataset(Dataset):
             transform (callable, optional): Optional transform to be applied
                 on a sample.
         """
-        self.key_pts_frame = pd.read_csv(csv_file)
+        self.key_pts_frame = (pd.read_csv(csv_file)).dropna(axis=0, how="any").reset_index(drop=True)
+
         self.root_dir = root_dir
         self.transform = transform
         self.sig_kp = sig_kp
 
+        # TODO: Filter out self.key_pts_frame for rows without wanted key points (pupil, left, right, ...)
+
     def __len__(self):
+
+        #print(self.key_pts_frame)
         return len(self.key_pts_frame)
 
+
+
     def __getitem__(self, idx):
-        image_name = os.path.join(self.root_dir,
-                                  self.key_pts_frame.iloc[idx, 0])
 
-        image = mpimg.imread(image_name)[..., None]
 
-        shape = image.shape
+            image_name = os.path.join(self.root_dir,
+                                      self.key_pts_frame.iloc[idx, 0])
 
-        # we take only pupil for now
-        kx = self.key_pts_frame['xp'].loc[idx]
-        ky = self.key_pts_frame['yp'].loc[idx]
+            image = mpimg.imread(image_name)[..., None]
 
-        # apply augmentations
-        if (self.transform is not None):
-            # make deterministic so that all data have same transformatoin
-            aug_det = self.transform.to_deterministic()
+            shape = image.shape
 
-            key_pts = ia.KeypointsOnImage(
-                [ia.Keypoint(x=kx, y=ky)], shape=(shape[0], shape[1]))
-            image, key_pts = aug_det(image=image, keypoints=key_pts)
+            # we take only pupil for now
+            kx = self.key_pts_frame['xp'].loc[idx]
+            ky = self.key_pts_frame['yp'].loc[idx]
 
-        # generate univariate gaussian
-        kp_map = np.array([
-            make_2d_gauss((image.shape[0], image.shape[1]),
-                            self.sig_kp * np.max(shape), (kp.y, kp.x))
-            for kp in key_pts.keypoints
-        ])
 
-        # put channel first
-        image = np.rollaxis(image, -1, 0)
-        
+            # apply augmentations
+            if (self.transform is not None):
+                # make deterministic so that all data have same transformation
+                aug_det = self.transform.to_deterministic()
 
-        sample = {'image': image, 'truth': kp_map}
+                key_pts = ia.KeypointsOnImage(
+                    [ia.Keypoint(x=int(kx*image.shape[1]), y=int(ky * image.shape[0]))], shape=(shape[0], shape[1]))
+                image, key_pts = aug_det(image=image, keypoints=key_pts)
 
-        return sample
+            # generate univariate gaussian
+            kp_map = np.array([
+                make_2d_gauss((image.shape[0], image.shape[1]),
+                                self.sig_kp * np.max(shape), (kp.y, kp.x))
+                for kp in key_pts.keypoints
+            ])
+
+            # put channel first
+            image = np.rollaxis(image, -1, 0)
+            sample = {'image': image, 'truth': kp_map}
+
+            return sample

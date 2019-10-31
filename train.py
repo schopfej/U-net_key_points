@@ -83,7 +83,7 @@ rescale_augmenter = iaa.Lambda(
 def train(cfg):
 
     # make run_dir with date
-    import pdb; pdb.set_trace() ## DEBUG ##
+
     d = datetime.datetime.now()
     run_dir = pjoin(cfg.out_dir, 'exp_{:%Y-%m-%d_%H-%M}'.format(d))
 
@@ -101,9 +101,12 @@ def train(cfg):
                depth=cfg.depth,
                merge_mode=cfg.merge_mode)
 
-    criterion = nn.CrossEntropyLoss()
+    #criterion = nn.CrossEntropyLoss()
+    criterion = nn.MSELoss()
+
     optimizer = optim.SGD(net.parameters(), lr=cfg.lr, momentum=cfg.momentum)
-    softm = nn.Softmax(dim=0)
+    #softm = nn.Softmax(dim=1)
+    softm = nn.Sigmoid()
 
     # make augmenter
     transf = iaa.Sequential([
@@ -141,6 +144,7 @@ def train(cfg):
                                    batch_size=cfg.batch_size,
                                    num_workers=cfg.n_workers),
                'test': DataLoader(train_loader,
+                                  batch_size=cfg.batch_size,
                                   num_workers=cfg.n_workers)}
     # convert batch to device
     device = torch.device('cuda' if cfg.cuda else 'cpu')
@@ -153,9 +157,11 @@ def train(cfg):
     }
 
     for epoch in range(cfg.n_epochs):  # loop over the dataset multiple times
+
         for phase in loaders.keys():
             if phase == 'train':
                 net.train()
+
             else:
                 net.eval()  # Set model to evaluate mode
 
@@ -173,17 +179,16 @@ def train(cfg):
                 with torch.set_grad_enabled(phase == 'train'):
                     #import pdb; pdb.set_trace()
 
-                    out = net(data['image'].float())
-                    out = out.permute(2, 3, 0, 1).contiguous().view(-1, 1)
-                    data_truth = softm(torch.squeeze(data['truth'])) ## here I am not sure, bc the entropy fct already has softmax
+                    out = softm(net(data['image'].float()))
 
-                    data_truth = data_truth.long()
-                    out = out.reshape(4, 1, 224, 224)
+                    #data_truth = softm(torch.squeeze(data['truth'])) ## here I am not sure, bc the entropy fct already has softmax
+                    #data_truth = data_truth.long().reshape(4, 224*224)
+                    #out = out.reshape(4, 1, 224*224)
                     # data_truth should have shape 4, 244,244
                     # input matrix is in the shape: (Minibatch, Classes, H, W)
                     # the target is in size (Minibatch, H, W)
-                    loss = criterion(out, data_truth)
-
+                    loss = criterion(out, data['truth'].float())
+                                                   #############################
                     # backward + optimize only if in training phase
                     if phase == 'train':
                         loss.backward()
@@ -199,19 +204,19 @@ def train(cfg):
                               epoch)
 
         # make preview images
-        if phase == 'prev':
+        if phase == 'test':
             data = next(iter(loaders[phase]))
             data = batch_to_device(data)
-            pred_ = net(data['image']).cpu()
+            pred_ = softm(net(data['image'].float())).cpu()
             pred_ = [
-                pred_[i, ...].repeat(3, 1, 1)
+                pred_[i, ...]
                 for i in range(pred_.shape[0])
             ]
-            im_ = data['image'].cpu()
+            im_ = data['image'].float().cpu()
             im_ = [im_[i, ...] for i in range(im_.shape[0])]
-            truth_ = data['truth'].cpu()
+            truth_ = data['truth'].float().cpu()
             truth_ = [
-                truth_[i, ...].repeat(3, 1, 1)
+                truth_[i, ...]
                 for i in range(truth_.shape[0])
             ]
             all_ = [
@@ -244,7 +249,7 @@ def train(cfg):
 
 if __name__ == "__main__":
 
-    import pdb; pdb.set_trace() ## DEBUG ##
+    #import pdb; pdb.set_trace() ## DEBUG ##
     p = params.get_params()
 
     #Paths, dirs, names ...
