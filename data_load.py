@@ -97,4 +97,5 @@ class FacialKeypointsDataset(Dataset):
             image = np.rollaxis(image, -1, 0)
             sample = {'image': image, 'truth': kp_map}
 
+
             return sample
