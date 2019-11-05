@@ -69,12 +69,16 @@ class FacialKeypointsDataset(Dataset):
                                       self.key_pts_frame.iloc[idx, 0])
 
             image = mpimg.imread(image_name)[..., None]
-
+            #image = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
             shape = image.shape
 
-            # we take only pupil for now
+            # we take all key points xr, yr is the
             kx = self.key_pts_frame['xp'].loc[idx]
             ky = self.key_pts_frame['yp'].loc[idx]
+            xr = self.key_pts_frame['xr'].loc[idx]
+            yr = self.key_pts_frame['yr'].loc[idx]
+            xl = self.key_pts_frame['xl'].loc[idx]
+            yl = self.key_pts_frame['yl'].loc[idx]
 
 
             # apply augmentations
@@ -83,7 +87,10 @@ class FacialKeypointsDataset(Dataset):
                 aug_det = self.transform.to_deterministic()
 
                 key_pts = ia.KeypointsOnImage(
-                    [ia.Keypoint(x=int(kx*image.shape[1]), y=int(ky * image.shape[0]))], shape=(shape[0], shape[1]))
+                    [ia.Keypoint(x=int(kx*image.shape[1]), y=int(ky * image.shape[0])),
+                    ia.Keypoint(x=int(xr*image.shape[1]), y=int(yr * image.shape[0])),
+                    ia.Keypoint(x=int(xl*image.shape[1]), y=int(yl * image.shape[0]))],
+                    shape=(shape[0], shape[1]))
                 image, key_pts = aug_det(image=image, keypoints=key_pts)
 
             # generate univariate gaussian

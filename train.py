@@ -22,6 +22,8 @@ import datetime
 from tensorboardX import SummaryWriter
 import tqdm
 import params
+from skimage import draw
+
 
 def save_checkpoint(dict_,
                     is_best,
@@ -105,8 +107,9 @@ def train(cfg):
     criterion = nn.MSELoss()
 
     optimizer = optim.SGD(net.parameters(), lr=cfg.lr, momentum=cfg.momentum)
+    optimizer = optim.Adam(params=net.parameters(), lr=0.0025, weight_decay=0.00001)
     #softm = nn.Softmax(dim=1)
-    softm = nn.Sigmoid()
+    softm = nn.Sigmoid()                                     ################################
 
     # make augmenter
     transf = iaa.Sequential([
@@ -208,17 +211,37 @@ def train(cfg):
             data = next(iter(loaders[phase]))
             data = batch_to_device(data)
             pred_ = softm(net(data['image'].float())).cpu()
-            pred_ = [
-                pred_[i, ...]
-                for i in range(pred_.shape[0])
-            ]
-            im_ = data['image'].float().cpu()
-            im_ = [im_[i, ...] for i in range(im_.shape[0])]
+
+            im_ = data['image'].float().cpu().detach()
+            im_ = [torch.cat(3*[im_[i, ...]]) for i in range(im_.shape[0])]
             truth_ = data['truth'].float().cpu()
             truth_ = [
-                truth_[i, ...]
+                torch.cat([truth_[i, ...]])
                 for i in range(truth_.shape[0])
             ]
+
+            # normalize prediction maps in-place
+            for b in range(pred_.shape[0]):
+                for n in range(pred_.shape[1]):
+                    pred_[b, n, ...] = (pred_[b, n, ...] - pred_[b, n, ...].min())
+                    pred_[b, n, ...] = pred_[b, n, ...] / pred_[b, n, ...].max()
+
+            # find max location on each channel of each batch element
+            pos = []
+            for b in range(pred_.shape[0]):
+                pos.append([])
+                for n in range(pred_.shape[1]):
+                    idx_max = pred_[b, n, ...].argmax()
+                    i, j = np.unravel_index(idx_max, pred_[b, n, ...].shape)
+                    pos[-1].append((i, j))
+                    # draw circle on image through numpy :(
+                    rr, cc = draw.circle(i, j, 5, shape=im_[b][n, ...].shape)
+                    im__ = np.rollaxis(im_[b].detach().numpy(), 0, 3)
+                    im__[rr, cc, ...] = (1., 0., 0.)
+                    im_[b] = torch.from_numpy(np.rollaxis(im__, -1, 0))
+
+            pred_ = [torch.cat([pred_[i, ...]]) for i in range(pred_.shape[0])]
+            #import pdb; pdb.set_trace()
             all_ = [
                 tutls.make_grid([im_[i], truth_[i], pred_[i]],
                                 nrow=len(pred_),
@@ -259,6 +282,5 @@ if __name__ == "__main__":
     p.add('--checkpoint-file', type=str)
 
     cfg = p.parse_args()
-
 
     train(cfg)
